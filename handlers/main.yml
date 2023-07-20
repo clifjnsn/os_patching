@@ -1,0 +1,44 @@
+---
+# handlers file for patching role
+#
+- name: Set Rebooted
+  set_fact:
+    system_rebooted: True
+
+- name: Time Reboot Start
+  shell: date +"%T %D%n"
+  register: start_reboot_time
+
+- name: Reboot Server
+  reboot:
+    reboot_timeout: 3600
+
+- name: Send space issue email
+  mail:
+    host: "{{ mail_server }}"
+    port: "{{ mail_port }}"
+    to: "{{ mail_success_to }}"
+    from: "{{ mail_from }}"
+    subject: "FAILED - Patching of Host {{ inventory_hostname }}"
+    body: "One or more volumes had insufficient available disk space in order to proceed with OS updates."
+  become: no
+  delegate_to: localhost
+  when:
+    - mail_enabled
+
+- name: Send patching email
+  mail:
+    host: "{{ mail_server }}"
+    port: "{{ mail_port }}"
+    to: "{{ mail_success_to }}"
+    from: "{{ mail_from }}"
+    subject: "{{ patching_success }} - Patching of Host {{ inventory_hostname }}"
+    body: "{{ mail_body }}"
+  become: no
+  delegate_to: localhost
+  when:
+    - mail_enabled
+
+- name: Time Reboot End
+  shell: date +"%T %D%n"
+  register: end_reboot_time

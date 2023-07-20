@@ -1,0 +1,106 @@
+---
+
+- name: Update package db cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  ignore_errors: true
+
+- name: Capture list of packages to upgrade
+  command: "/usr/bin/apt list --upgradable"
+  register: needs_upgrade
+  ignore_errors: true
+
+- name: Display packages to update
+  debug:
+    var: needs_upgrade.stdout_lines
+  ignore_errors: true
+  when: 
+    - needs_upgrade is defined
+
+- name: Apply all available updates with apt
+  apt:
+    update_cache: no
+    upgrade: dist
+    autoremove: yes
+    autoclean: yes
+  async: 1500
+  poll: 0
+  register: patching_output
+  ignore_errors: true
+
+- name: Wait for Apt updates to complete
+  async_status:
+    jid: "{{ patching_output.ansible_job_id }}"
+  register: patch_wait_result
+  until: patch_wait_result.finished
+  retries: 100
+  ignore_errors: true
+  delay: 30
+
+- name: Check for errors during patching
+  set_fact:
+    update_error: true
+  notify: Send patching email
+  when: 
+    - '"failed:" in patch_wait_result.msg'
+    - mail_enabled
+
+- name: Set error message for use in E-Mail
+  set_fact:
+    error_message: "{{ patch_wait_result.msg }}"
+  notify: Send patching email
+  when:
+    - update_error
+    - mail_enabled
+
+- name: Display output of patching process
+  debug:
+    var: patching_output
+    verbosity: 2
+  ignore_errors: true
+  when: 
+    - patching_output is defined
+
+- name: Check if reboot is needed
+  stat:
+    path: /var/run/reboot-required
+  register: needs_reboot
+  changed_when: needs_reboot.stat.exists
+  notify: 
+    - Time Reboot Start
+    - Reboot Server
+    - Set Rebooted
+  ignore_errors: true
+
+- name: Display Needs Reboot status output
+  debug:
+    var: needs_reboot
+    verbosity: 2
+
+- name: Reboot server (if needed)
+  meta: flush_handlers
+
+- name: Determine amount of time to reboot
+  debug:
+    msg: "Checking end time for reboot"
+  changed_when: True
+  notify: Time Reboot End
+  when: needs_reboot
+
+- name: End reboot timer
+  meta: flush_handlers
+
+- name: Get list of packages updated
+  shell: grep -E "^$(date +%Y-%m-%d).+ (install|upgrade) " /var/log/dpkg.log |cut -d " " -f 3-5
+  register: packages_updated
+  notify: Send patching email
+  when:
+    - mail_enabled
+
+- name: Display packages updated
+  debug:
+    var: packages_updated.stdout_lines
+    verbosity: 2
+  when: 
+    - packages_updated is defined

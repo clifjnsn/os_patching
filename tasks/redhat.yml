@@ -1,0 +1,121 @@
+---
+
+- name: Clean YUM Cache
+  shell: 'mv /var/lib/rpm/__db* /tmp/; rpm --rebuilddb; yum clean all'
+  ignore_errors: true
+
+- name: Refresh Subscription Manager
+  command: subscription-manager refresh
+  ignore_errors: true
+  when: 
+    - ansible_facts['distribution'] == 'RedHat'
+    
+- name: Capture list of packages to upgrade
+  command: "yum list updates"
+  register: needs_upgrade
+  ignore_errors: true
+
+- name: Display packages to update
+  debug:
+    var: needs_upgrade.stdout_lines
+  ignore_errors: true
+  when: 
+    - needs_upgrade is defined
+
+- name: Insure yum-utils is installed
+  yum:
+    name: yum-utils
+    state: installed
+  ignore_errors: true
+
+- name: Apply all available updates with yum
+  yum:
+    name: '*'
+    state: latest
+    update_cache: yes
+    exclude: "*qpid*"
+  async: 1500
+  poll: 0
+  register: patching_output
+  ignore_errors: true
+
+- name: Wait for Yum updates to complete
+  async_status:
+    jid: "{{ patching_output.ansible_job_id }}"
+  register: patch_wait_result
+  until: patch_wait_result.finished
+  retries: 100
+  delay: 30
+  ignore_errors: true
+
+# Not sure if this works for yum.  Would like to see another error, view the full patch_wait_result variable to see if there is a rc value or failed flag
+# If so, do the same for Ubuntu/Debian
+- name: Check for errors during patching
+  set_fact:
+    update_error: true
+  notify: Send patching email
+  when:
+    - patch_wait_result.rc != 0
+    - mail_enabled
+
+- name: Set error message for use in E-mail
+  set_fact:
+    error_message: "{{ patch_wait_result.msg }}"
+  when:
+    - update_error
+    - mail_enabled
+
+- name: Check if reboot is needed (RedHat)
+  shell: "/bin/needs-restarting -r | grep Reboot"
+  args:
+    warn: no
+  ignore_errors: true
+  register: needs_reboot
+  changed_when: "'Reboot is required' in needs_reboot.stdout"
+  notify: 
+    - Time Reboot Start
+    - Reboot Server
+    - Set Rebooted
+
+- name: Display Needs Reboot status output
+  debug:
+    var: needs_reboot
+    verbosity: 2
+
+- name: Reboot server (if needed)
+  meta: flush_handlers
+
+- name: Determine amount of time to reboot
+  debug:
+    msg: "Checking end time for reboot"
+  changed_when: True
+  notify: Time Reboot End
+  when: needs_reboot
+
+- name: End reboot timer
+  meta: flush_handlers
+
+- name: Set grep format depending on RHEL version
+  set_fact:
+          grp_cmd: "{% if ansible_facts['distribution_major_version'] == '7' %}grep -E \"^$(date +%b\\ %d).+ \" /var/log/yum.log |cut -d \" \" -f 4-5{% else %}grep -iE \"^$(date +%Y-%m-%d).+ (Upgraded:|Installed:)\" /var/log/dnf.rpm.log | cut -d \" \" -f 3-4{% endif %}"
+  ignore_errors: true
+
+- name: Display grp_cmd
+  debug:
+    var: grp_cmd
+    verbosity: 2
+  ignore_errors: true
+
+- name: Get list of packages updated
+  shell: "{{ grp_cmd }}"
+  register: packages_updated
+  notify: Send patching email
+  when:
+    - mail_enabled
+
+- name: Display packages updated
+  debug:
+    var: packages_updated
+    verbosity: 2
+  when: 
+    - packages_updated is defined

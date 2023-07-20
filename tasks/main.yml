@@ -1,0 +1,63 @@
+---
+- name: Capture start time of patching
+  shell: date +"%T %D%n"
+  register: start_time
+
+- name: Test for available disk space
+  include_tasks: space.yml
+
+- name: Display Distribution
+  debug:
+    var: ansible_facts['distribution']
+    verbosity: 2
+
+- name: Patching RHEL Server
+  include_tasks: redhat.yml
+  when: 
+    - ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'RedHat'
+
+- name: Patching Ubuntu/Debian Server
+  include_tasks: ubuntu.yml
+  when:
+    - ansible_facts['distribution'] == 'Ubuntu' or ansible_facts['distribution'] == 'Debian'
+
+- name: Capture end time of patching
+  shell: date +"%T %D%n"
+  register: end_time
+
+- name: Set Success or Failure variable for email Subject Line
+  set_fact:
+    patching_success: "{% if patching_output.failed|bool == true %}FAILURE{% else %}SUCCESS{% endif %}"
+  when:
+    - patching_output.failed is defined or update_error
+
+- name: Set Success or Failure variable for email Subject Line(2)
+  set_fact:
+    patching_success: "FAILURE"
+  when:
+    - update_error | bool
+
+- name: Set email body based on success or failure of updates
+  set_fact:
+    mail_body : |
+      ===================================================
+      Patching started : {{ start_time.stdout }}
+      Patching ended   : {{ end_time.stdout }}
+      Reboot Performed : {{ system_rebooted }}
+      {% if system_rebooted|bool == true %}   Reboot started: {{ start_reboot_time.stdout }}
+      {% endif %}
+      {% if system_rebooted|bool == true %}   Reboot ended: {{ end_reboot_time.stdout }}
+      {% endif %}
+      ===================================================
+ 
+      {% if patching_output.failed|bool == true %}Errors Reported: {% else %}Packages Updated: {% endif %}
+
+      {% if packages_updated.stdout == "" %}None.{% else %}{{ packages_updated.stdout_lines | to_nice_yaml }}{% endif %}
+
+      {% if update_error|bool %}Errors Reported: {% endif %}
+
+      {% if update_error|bool %}{{ error_message | to_nice_yaml }}{% endif %}
+
+  when:
+    - patching_output.failed is defined
+    - mail_enabled

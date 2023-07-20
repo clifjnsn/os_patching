@@ -1,0 +1,41 @@
+---
+# Check available disk space for /, /var, and /tmp
+- name: Gather free disk space for /
+  shell: df / --output\=avail | tail -1
+  register: root_freespace
+- name: Gather free disk space for /var
+  shell: df /var --output\=avail | tail -1
+  register: var_freespace
+- name: Gather free disk space for /tmp
+  shell: df /tmp --output\=avail | tail -1
+  register: tmp_freespace
+
+- debug:
+    var: root_freespace
+    verbosity: 3
+- debug:
+    var: var_freespace
+    verbosity: 3
+- debug:
+    var: var_freespace
+    verbosity: 3
+
+- name: Compare available space to min_free_space variable
+  assert:
+    that:
+      - root_freespace.stdout|float > min_free_space
+      - tmp_freespace.stdout|float > min_free_space
+      - var_freespace.stdout|float > min_free_space
+  register: spacecheck
+  changed_when: spacecheck.msg == "Assertion failed"
+  failed_when: False
+  notify: Send space issue email
+
+- debug: 
+    var: spacecheck
+    verbosity: 2
+
+- fail:
+    msg: Insufficient disk space to perform OS update
+  when: 
+    - spacecheck.msg == "Assertion failed"
