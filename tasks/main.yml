@@ -41,6 +41,7 @@
   set_fact:
     mail_body : |
       ===================================================
+      Operating System : {{ ansible_distribution }} {{ ansible_distribution_version }}
       Patching started : {{ start_time.stdout }}
       Patching ended   : {{ end_time.stdout }}
       Reboot Performed : {{ system_rebooted }}
