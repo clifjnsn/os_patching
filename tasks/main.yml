@@ -11,15 +11,33 @@
     var: ansible_facts['distribution']
     verbosity: 2
 
-- name: Patching RHEL Server
-  include_tasks: redhat.yml
-  when: 
-    - ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'RedHat'
+- name: Patch current server and go to next one if failure
+  block:
 
-- name: Patching Ubuntu/Debian Server
-  include_tasks: ubuntu.yml
-  when:
-    - ansible_facts['distribution'] == 'Ubuntu' or ansible_facts['distribution'] == 'Debian'
+    - name: Patching RHEL Server
+      include_tasks: redhat.yml
+      when: 
+        - ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'RedHat'
+
+    - name: Patching Ubuntu/Debian Server
+      include_tasks: ubuntu.yml
+      when:
+        - ansible_facts['distribution'] == 'Ubuntu' or ansible_facts['distribution'] == 'Debian'
+  rescue:
+    - name: Current server failed to patch
+      debug:
+        msg: "{{ "
+        msg: '{{ inventory_hostname|lower }} FAILED to patch.'
+    - name: Flag this host as a failure
+      set_fact:
+        patching_success: "FAILED"
+    - name: Set mail body
+      set_fact:
+        mail_body: "There was a failure during this patching cycle."
+    - name: Flush all handlers
+      meta: flush_handlers
+    - name: Proceed to next server
+      meta: end_host
 
 - name: Capture end time of patching
   shell: date +"%T %D%n"
@@ -36,6 +54,9 @@
     patching_success: "FAILURE"
   when:
     - update_error | bool
+
+- name: Cleanup old Journal Control logs
+  command: "journalctl --vacuum-time=90days"
 
 - name: Set email body based on success or failure of updates
   set_fact:

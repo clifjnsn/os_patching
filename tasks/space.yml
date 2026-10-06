@@ -1,4 +1,23 @@
 ---
+
+# Cleanup space
+- name: Keep the /var/log volume tidy
+  find:
+    paths: /var/log
+    file_type: file
+    age: 90d
+    age_stamp: mtime
+    recurse: true
+  register: old_files
+  ignore_errors: true
+
+- name: Delete the older files in /var/log
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_files.files }}"
+  ignore_errors: true
+
 # Check available disk space for /, /var, and /tmp
 - name: Gather free disk space for /
   shell: df / --output\=avail | tail -1

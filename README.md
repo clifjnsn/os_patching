@@ -1,60 +1,44 @@
-# Operating System Patching Role
-The purpose of this role is to patch/update the operating system of each server.
-The first thing this role does is check available disk space on the server (on the following volumes):
-root (/)
-var  (/var)
-tmp  (/tmp)
-If the free space on any of these listed volumes is less than the value set in variable "min_free_space", then the update is flagged as failed, and if the variable mail_enabled is True, sends an email indicating the failure.
+# Ansible Stable Execution Environment
+*This readme is a WIP (work in progress)*   
+OH-Ansible is a project to give us a common/stable/predictable location to launch our ansible code on the command line.
 
-The tasks for the Operating System updates has been split into separate tasks files, according the operating system distribution:
-* Ubuntu / Debian = ubuntu.yml
-* Centos / RedHat = redhat.yml
+## How to get it:
+1. Download the repo
+> git clone git@ltv-gitlab-ap01.orhs.org:ohlinux/oh-ansible.git
+2. cd into the oh-ansible directory
+> cd oh-ansible
+3. cp the ansible.cfg.sample file to ansible.cfg
+> cp ansible.cfg.sample ansible.cfg
+(You may need to edit this file to insure it matches your setup - especially the sections which refer to directory/file paths)
 
-## Default Variables
-The following variables have default settings in the defaults/main.yml file:
-* mail_enabled    - Controls whether or not an email will be sent upon success/failure of the patching
-* mail_server     - The IP or DNS name of the email/SMTP server
-* mail_port       - The port number which will be used by the mail module to connect to the mail_server
-* mail_success_to - The email address to which to send successful completion emails to
-* mail_failure_to - The email address to which to send failure completion emails to
-* min_free_space  - The minimum number of bytes available on the 3 volumes listed above, below which no updates should be applied
-* mail_from       - The email address to use as the From: address on the success/failure emails
-
-## Patching Steps
-Here is a summary of the steps performed during this patching work:
-* As mentioned above, we first check that available storage space on a select number of volumes.
-* Clean the package manager cache, and pull latest subscription-manager information (in the case of RedHat)
-* Pull a list of packages for which an update is available for (and display it to the screen)
-* Insure a couple of tools/packages exist on the system
-* Apply the updates, wait for the updates to finish, and capture the output of the command
-* If an error is detected in the patching output, send an "error" e-mail
-* Detect if the package updates now require a system reboot
-* Reboot (if required), and time how long that reboot took
-* Query the package update /var/log log file, and store this list in a variable, to be included in the final "success" email
-* Send a "success" email, which includes: 
-  - Start/Stop time for entire patching run for the server
-  - Reboot duration (if a server was rebooted)
-  - List of packages which were upgraded/installed
-
-## Notes
-* The playbook which calls this role must include the option:
+## Directory Structure:
 ~~~
- force_handlers: true
+oh-ansible/
+├── ansible.cfg.sample  ← example ansible.cfg to set up a stable common environment for all playbooks
+├── ansible-cache  ← Directory to hold collected Ansible "facts" about each host - used by ansible-cmdb reporting tool
+├── archived  ← Directory which contains playbooks which are only for reference
+├── group_vars/  ← put files in here named after groups from the inventory to specify variables that will apply to all members of that group.
+├── group_vars/all/ohvault.yml  ← Encrypted ansible-vault file, containing account passwords, which are referenced in the hosts file.
+├── host_vars/  ← put files in here named after specific hosts from the inventory to specify variables that will apply only to that host.  Variables here override group_vars
+├── playbooks/   ← put your playbooks here. (NOTE: AWX cannot find roles loaded from playbooks located here.  If a playbook contains a role, place it at the root folder)
+├── roles/  ← all roles.  anything bigger than a playbook.  requirements.yml will import roles from other places.  .gitignore will keep them from getting added to our repo.
+│   ├── patching   ← RedHat and Ubuntu automated system patching
+│   ├── oneagent   ← Dynatrace agent installation/removal
+└── site.yml ← should launch all the idempotent playbooks on the site, can use tags or limits to limit what is done.
 ~~~
-* This role detects whether or not a reboot is required after a successful update, and reboots only the servers which require the update
-* Even though the Ansible mail module supports email CC: addresses, this is not implemented.  If you need to send to more than one address, specify the list of addresses as a YAML list:
-~~~
-- address1
-- address2
-~~~
-This hasn't been tested yet, but I believe this is how it would work
 
-## Tested Successfully on:
-* Ubuntu 18.04
-* Ubuntu 20.04
-* Ubuntu 22.04
-* RHEL 7.9
-* RHEL 8.6
-* Centos 7
-* Debian 9
-* Debian 10
+## To Use the encrypted vault file for an Ansible Ad-hoc, or playbook, run
+> ansible --ask-vault-password -m ping all
+
+> ansible-playbook --ask-vault-password cli_gather.yml
+
+## To stop being prompted for the vault password
+1. Create a "secrets" file in oh-ansible/
+> touch oh-ansible/.secret.txt
+
+> chmod 600 oh-ansible/.secret.txt
+2. Edit the file and place the KeePass password into the file (in plain text)
+3. Run ansible/ansible-playbook commands using this file instead of being prompted for a password:
+> ansible --vault-password-file .secret.txt -m ping all
+
+> ansible-playbook --vault-password-file .secret.txt cli_gather.yml

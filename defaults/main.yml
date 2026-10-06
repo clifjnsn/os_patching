@@ -1,17 +1,17 @@
 ---
 mail_enabled: True
-mail_server: relay.nowhere.com
+mail_server: localhost
 mail_port: 25
 mail_success_to:
-  - nobody@nowhere.com
+  - nobody@nowhere.org
 mail_failure_to:
-  - nobody@nowhere.com
-mail_from: ansible@nowhere.com
+  - nobody@nowhere.org
+mail_from: ansible@nowhere.org
 #
 # No need to change anything below this section
 #
 # Minimum free disk space before patching can occur
-min_free_space: 2000000
+min_free_space: 1500000
 # Initial value of the flag to check for errors
 update_error: False
 system_rebooted: False

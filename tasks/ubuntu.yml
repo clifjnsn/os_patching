@@ -104,3 +104,6 @@
     verbosity: 2
   when: 
     - packages_updated is defined
+
+- name: Cleanup Old Kernels
+  command: "apt autoremove --purge"
